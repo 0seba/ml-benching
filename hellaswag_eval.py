@@ -16,6 +16,7 @@ def process_txt(text: str):  # mirrored from hellaswag task
 
 def format_and_tokenize(
     example,
+    idx,
     tokenizer,
     add_thinking_block=False,
     disable_thinking=False,
@@ -52,12 +53,14 @@ $$"""
         "conversation": conversation,
         "label": int(example["label"]),
         "detokenized": detokenized,
+        "index": idx,
     }
 
 def collate_fn(batch, tokenizer):
     conversations = [item['conversation'] for item in batch]
     lengths = [item['length'] for item in batch]
     labels = [item['label'] for item in batch]
+    indices = [item['index'] for item in batch]
 
     tokenized = tokenizer.apply_chat_template(
         conversations,
@@ -72,18 +75,19 @@ def collate_fn(batch, tokenizer):
         # chat_template=chat_template,
     )
     
-    return tokenized, torch.tensor(lengths), torch.tensor(labels)
+    return tokenized, torch.tensor(lengths), torch.tensor(labels), torch.tensor(indices)
 
 def run_eval(model, tokenizer, dataloader):
     results = []
     options = tokenizer(["A", "B", "C", "D"], return_tensors="pt").input_ids.cuda().view(-1)
+    nan_indices = []
     # pbar = tqdm(data_loader)
     count = 0
     num_correct_all = 0
     num_correct_valid = 0
     nll_sum = 0
     with torch.inference_mode():
-        for batch, lengths, labels in tqdm(dataloader, ncols=0):
+        for batch, lengths, labels, indices in tqdm(dataloader, ncols=0):
             assert labels.max() <= 3
             labels = labels.cuda(non_blocking=True)
             lengths = lengths.cuda(non_blocking=True)
@@ -111,12 +115,27 @@ def run_eval(model, tokenizer, dataloader):
             #     "labels": labels,
             #     "labels_encoded": labels_encoded.cpu(),
             # })
-    
-            count += lengths.size(0)
-            num_correct_all += (argmax_among_all == labels_encoded).sum()
-            num_correct_valid += (argmax_among_valid == labels).sum()
+
             nll = logsumexp.squeeze(1) - correct_answer_logits
-            nll_sum += nll.sum()
+            is_nan_or_inf = torch.isnan(nll) | torch.isinf(nll)
+
+            nan_indices_in_batch = indices[is_nan_or_inf.cpu()]
+            nan_indices.extend(nan_indices_in_batch.tolist())
+
+            valid_mask = ~is_nan_or_inf
+
+            valid_nll = nll[valid_mask]
+            nll_sum += valid_nll.sum()
+
+            valid_argmax_among_all = argmax_among_all[valid_mask]
+            valid_labels_encoded = labels_encoded[valid_mask]
+            num_correct_all += (valid_argmax_among_all == valid_labels_encoded).sum()
+
+            valid_argmax_among_valid = argmax_among_valid[valid_mask]
+            valid_labels = labels[valid_mask]
+            num_correct_valid += (valid_argmax_among_valid == valid_labels).sum()
+
+            count += valid_mask.sum()
     
             # pbar.set_postfix(
             #     all_acc=f"{num_correct_all / count:.4f}",
@@ -125,10 +144,11 @@ def run_eval(model, tokenizer, dataloader):
             #     nll=f"{nll_sum / count:.4f}",
             # )
     return dict(
-        all_acc=f"{num_correct_all.item() / count:.4f}",
-        valid_acc=f"{num_correct_valid.item() / count:.4f}",
-        count=count,
-        nll=f"{nll_sum.item() / count:.4f}",
+        all_acc=f"{num_correct_all.item() / count.item():.4f}" if count.item() > 0 else "0.0000",
+        valid_acc=f"{num_correct_valid.item() / count.item():.4f}" if count.item() > 0 else "0.0000",
+        count=count.item(),
+        nll=f"{nll_sum.item() / count.item():.4f}" if count.item() > 0 else "0.0000",
+        nan_indices=nan_indices,
     )
 
 def evaluate(model_name, dataset):
@@ -144,7 +164,8 @@ def evaluate(model_name, dataset):
     
     for disable_thinking in [True, False]:
         tokenized_dataset = dataset.map(
-            format_and_tokenize, 
+            format_and_tokenize,
+            with_indices=True,
             fn_kwargs={'tokenizer': tokenizer, "disable_thinking": disable_thinking},
             num_proc=8,
         )
@@ -161,6 +182,8 @@ def evaluate(model_name, dataset):
         print(f"\n{model_name} Results:")
         print("Disable thinking:", disable_thinking)
         print(r)
+        if r['nan_indices']:
+            print(f"NaN indices: {r['nan_indices']}")
     
     
 
