@@ -276,6 +276,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--models", nargs="+", default=["Qwen/Qwen2-1.5B-Instruct"], help="List of models to evaluate.")
     parser.add_argument("--datasets", nargs="+", default=["hellaswag"], choices=["hellaswag", "gpqa", "mmlu_pro"], help="List of datasets to evaluate on.")
+    parser.add_argument("--batch-size", "--batch_size", type=int, default=16)
     args = parser.parse_args()
 
     loaded_datasets = {}
@@ -306,7 +307,7 @@ def main():
             evaluate_gpqa(model_name, model, tokenizer, loaded_datasets["gpqa"])
 
         if "mmlu_pro" in args.datasets:
-            evaluate_mmlu_pro(model_name, model, tokenizer, loaded_datasets["mmlu_pro"])
+            evaluate_mmlu_pro(model_name, model, tokenizer, loaded_datasets["mmlu_pro"], args.batch_size)
 
 if __name__ == "__main__":
     main()

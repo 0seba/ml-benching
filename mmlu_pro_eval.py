@@ -33,7 +33,7 @@ def format_and_tokenize_mmlu_pro(
     assistant_message = f"Given the following question and options\n\n{question}\n\nOptions:\n"
     for i, option in enumerate(options):
         assistant_message += f"{chr(65 + i)}. {option}\n"
-    assistant_message += "\n\nThe correction option is $$\\boxed{{\\text{"
+    assistant_message += "\n\nThe correction option is $$\\boxed{\\text{"
 
     conversation = [
         {"role": "user", "content": user_message},
@@ -121,8 +121,8 @@ def run_eval_mmlu_pro(model, tokenizer, dataloader):
 
             if (batch_num % 10) == 0:
                 pbar.set_postfix(
-                    all_acc=f"{num_correct_all.item() / count if count > 0 else '0.0000'}",
-                    valid_acc=f"{num_correct_valid.item() / count if count > 0 else '0.0000'}",
+                    all_acc=f"{num_correct_all.item() / count if count > 0 else 0:.3f}",
+                    valid_acc=f"{num_correct_valid.item() / count if count > 0 else 0:.3f}",
                     count=count,
                     nll=f"{nll_sum.item() / count if count > 0 else '0.0000'}",
                     nan_indices=len(nan_indices),
@@ -130,14 +130,14 @@ def run_eval_mmlu_pro(model, tokenizer, dataloader):
                 
 
     return dict(
-        all_acc=f"{num_correct_all.item() / count if count > 0 else '0.0000'}",
-        valid_acc=f"{num_correct_valid.item() / count if count > 0 else '0.0000'}",
+        all_acc=f"{num_correct_all.item() / count if count > 0 else 0:.3f}",
+        valid_acc=f"{num_correct_valid.item() / count if count > 0 else 0:.3f}",
         count=count,
-        nll=f"{nll_sum.item() / count if count > 0 else '0.0000'}",
+        nll=f"{nll_sum.item() / count if count > 0 else 0:.3f}",
         nan_indices=nan_indices,
     )
 
-def evaluate_mmlu_pro(model_name, model, tokenizer, dataset):
+def evaluate_mmlu_pro(model_name, model, tokenizer, dataset, batch_size):
     tokenized_dataset = dataset.map(
         format_and_tokenize_mmlu_pro,
         with_indices=True,
@@ -150,7 +150,7 @@ def evaluate_mmlu_pro(model_name, model, tokenizer, dataset):
     collate_with_tokenizer = lambda batch: collate_fn_mmlu_pro(batch, tokenizer)
     data_loader = DataLoader(
         tokenized_dataset,
-        batch_size=16,
+        batch_size=batch_size,
         collate_fn=collate_with_tokenizer,
         num_workers=2,
     )
