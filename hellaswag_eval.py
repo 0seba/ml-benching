@@ -268,10 +268,12 @@ def evaluate_hellaswag(model_name, model, tokenizer, dataset):
         if r['nan_indices']:
             print(f"NaN indices: {r['nan_indices']}")
 
+from mmlu_pro_eval import evaluate_mmlu_pro
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--models", nargs="+", default=["Qwen/Qwen2-1.5B-Instruct"], help="List of models to evaluate.")
-    parser.add_argument("--datasets", nargs="+", default=["hellaswag"], choices=["hellaswag", "gpqa"], help="List of datasets to evaluate on.")
+    parser.add_argument("--datasets", nargs="+", default=["hellaswag"], choices=["hellaswag", "gpqa", "mmlu_pro"], help="List of datasets to evaluate on.")
     args = parser.parse_args()
 
     loaded_datasets = {}
@@ -281,6 +283,9 @@ def main():
     if "gpqa" in args.datasets:
         print("Loading gpqa dataset...")
         loaded_datasets["gpqa"] = datasets.load_dataset("PleIAs/GPQA", split="test")
+    if "mmlu_pro" in args.datasets:
+        print("Loading mmlu_pro dataset...")
+        loaded_datasets["mmlu_pro"] = datasets.load_dataset("TIGER-Lab/MMLU-Pro", split="test")
 
     for model_name in args.models:
         print(f"\n\nRunning eval for model: {model_name}")
@@ -297,6 +302,9 @@ def main():
 
         if "gpqa" in args.datasets:
             evaluate_gpqa(model_name, model, tokenizer, loaded_datasets["gpqa"])
+
+        if "mmlu_pro" in args.datasets:
+            evaluate_mmlu_pro(model_name, model, tokenizer, loaded_datasets["mmlu_pro"])
 
 if __name__ == "__main__":
     main()
