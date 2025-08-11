@@ -33,22 +33,23 @@ def format_and_tokenize_mmlu_pro(
     assistant_message = f"Given the following question and options\n\n{question}\n\nOptions:\n"
     for i, option in enumerate(options):
         assistant_message += f"{chr(65 + i)}. {option}\n"
-    assistant_message += f"\n\nThe correction option is $$\\boxed{{\\text{'{answer}'"
+    assistant_message += "\n\nThe correction option is $$\\boxed{{\\text{"
 
     conversation = [
         {"role": "user", "content": user_message},
         {"role": "assistant", "content": assistant_message}
     ]
 
-    input_ids = tokenizer.apply_chat_template(conversation, add_generation_prompt=False, return_tensors="pt")
-    length = len(input_ids[0])
+    input_ids = tokenizer.apply_chat_template(conversation, add_generation_prompt=False, continue_final_message=True,)
+    length = len(input_ids)
 
     return {
         "length": length,
         "conversation": conversation,
         "label": ord(answer) - ord('A'),
         "index": idx,
-        "options": "".join([chr(65+i) for i in range(len(options))])
+        "options": "".join([chr(65+i) for i in range(len(options))]),
+        # "tokenized": input_ids,
     }
 
 def collate_fn_mmlu_pro(batch, tokenizer):
@@ -64,6 +65,7 @@ def collate_fn_mmlu_pro(batch, tokenizer):
         padding="longest",
         return_tensors="pt",
         add_generation_prompt=False,
+        continue_final_message=True,
     )
 
     return tokenized, torch.tensor(lengths), torch.tensor(labels), torch.tensor(indices), options
@@ -75,7 +77,8 @@ def run_eval_mmlu_pro(model, tokenizer, dataloader):
     num_correct_valid = 0
     nll_sum = 0
     with torch.inference_mode():
-        for batch, lengths, labels, indices, options_batch in tqdm(dataloader, ncols=0):
+        pbar = tqdm(enumerate(dataloader), ncols=0, total=len(dataloader))
+        for batch_num, (batch, lengths, labels, indices, options_batch) in pbar:
             labels = labels.cuda(non_blocking=True)
             lengths = lengths.cuda(non_blocking=True)
 
@@ -116,6 +119,16 @@ def run_eval_mmlu_pro(model, tokenizer, dataloader):
 
                 count += 1
 
+            if (batch_num % 10) == 0:
+                pbar.set_postfix(
+                    all_acc=f"{num_correct_all.item() / count if count > 0 else '0.0000'}",
+                    valid_acc=f"{num_correct_valid.item() / count if count > 0 else '0.0000'}",
+                    count=count,
+                    nll=f"{nll_sum.item() / count if count > 0 else '0.0000'}",
+                    nan_indices=len(nan_indices),
+                )
+                
+
     return dict(
         all_acc=f"{num_correct_all.item() / count if count > 0 else '0.0000'}",
         valid_acc=f"{num_correct_valid.item() / count if count > 0 else '0.0000'}",
@@ -130,13 +143,14 @@ def evaluate_mmlu_pro(model_name, model, tokenizer, dataset):
         with_indices=True,
         fn_kwargs={'tokenizer': tokenizer},
         num_proc=8,
+        load_from_cache_file=False,
     )
     tokenized_dataset = tokenized_dataset.sort("length", reverse=True)
 
     collate_with_tokenizer = lambda batch: collate_fn_mmlu_pro(batch, tokenizer)
     data_loader = DataLoader(
         tokenized_dataset,
-        batch_size=32,
+        batch_size=16,
         collate_fn=collate_with_tokenizer,
         num_workers=2,
     )

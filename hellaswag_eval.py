@@ -236,6 +236,7 @@ def evaluate_gpqa(model_name, model, tokenizer, dataset):
         batch_size=8, # smaller batch size for potentially longer sequences
         collate_fn=collate_with_tokenizer,
         num_workers=2,
+        load_from_cache_file=False,
     )
     r = run_eval_gpqa(model, tokenizer, data_loader)
     print(f"\n{model_name} Results for GPQA:")
@@ -260,6 +261,7 @@ def evaluate_hellaswag(model_name, model, tokenizer, dataset):
             batch_size=32,
             collate_fn=collate_with_tokenizer,
             num_workers=2,
+            load_from_cache_file=False,
         )
         r = run_eval_hellaswag(model, tokenizer, data_loader)
         print(f"\n{model_name} Results for HellaSwag:")
