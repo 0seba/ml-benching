@@ -271,12 +271,16 @@ def evaluate_hellaswag(model_name, model, tokenizer, dataset):
             print(f"NaN indices: {r['nan_indices']}")
 
 from mmlu_pro_eval import evaluate_mmlu_pro
+from arc_eval import evaluate_arc
+from mmlu_redux_eval import evaluate_mmlu_redux
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--models", nargs="+", default=["Qwen/Qwen2-1.5B-Instruct"], help="List of models to evaluate.")
-    parser.add_argument("--datasets", nargs="+", default=["hellaswag"], choices=["hellaswag", "gpqa", "mmlu_pro"], help="List of datasets to evaluate on.")
+    parser.add_argument("--datasets", nargs="+", default=["hellaswag"], choices=["hellaswag", "gpqa", "mmlu_pro", "arc-challenge", "arc-easy", "mmlu-redux"], help="List of datasets to evaluate on.")
     parser.add_argument("--batch-size", "--batch_size", type=int, default=16)
+    parser.add_argument("--use-cot", action="store_true", help="Use CoT content for evaluation (MMLU-Pro only).")
+    parser.add_argument("--no-repeat-prompt", action="store_true", help="Do not repeat the prompt in the assistant message (ARC, MMLU-Redux, MMLU-Pro).")
     args = parser.parse_args()
 
     loaded_datasets = {}
@@ -289,6 +293,16 @@ def main():
     if "mmlu_pro" in args.datasets:
         print("Loading mmlu_pro dataset...")
         loaded_datasets["mmlu_pro"] = datasets.load_dataset("TIGER-Lab/MMLU-Pro", split="test")
+    if "arc-challenge" in args.datasets:
+        print("Loading arc-challenge dataset...")
+        loaded_datasets["arc-challenge"] = datasets.load_dataset("allenai/ai2_arc", "ARC-Challenge", split="test")
+    if "arc-easy" in args.datasets:
+        print("Loading arc-easy dataset...")
+        loaded_datasets["arc-easy"] = datasets.load_dataset("allenai/ai2_arc", "ARC-Easy", split="test")
+    if "mmlu-redux" in args.datasets:
+        print("Loading mmlu-redux dataset...")
+        loaded_datasets["mmlu-redux"] = datasets.load_dataset("cais/mmlu_redux", "all", split="test")
+
 
     for model_name in args.models:
         print(f"\n\nRunning eval for model: {model_name}")
@@ -299,6 +313,10 @@ def main():
             attn_implementation="flash_attention_2",
             torch_dtype=torch.bfloat16,
         )
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        repeat_prompt = not args.no_repeat_prompt
 
         if "hellaswag" in args.datasets:
             evaluate_hellaswag(model_name, model, tokenizer, loaded_datasets["hellaswag"])
@@ -307,7 +325,16 @@ def main():
             evaluate_gpqa(model_name, model, tokenizer, loaded_datasets["gpqa"])
 
         if "mmlu_pro" in args.datasets:
-            evaluate_mmlu_pro(model_name, model, tokenizer, loaded_datasets["mmlu_pro"], args.batch_size)
+            evaluate_mmlu_pro(model_name, model, tokenizer, loaded_datasets["mmlu_pro"], args.batch_size, use_cot=args.use_cot, repeat_prompt=repeat_prompt)
+
+        if "arc-challenge" in args.datasets:
+            evaluate_arc(model_name, model, tokenizer, loaded_datasets["arc-challenge"], args.batch_size, "ARC-Challenge", repeat_prompt)
+
+        if "arc-easy" in args.datasets:
+            evaluate_arc(model_name, model, tokenizer, loaded_datasets["arc-easy"], args.batch_size, "ARC-Easy", repeat_prompt)
+
+        if "mmlu-redux" in args.datasets:
+            evaluate_mmlu_redux(model_name, model, tokenizer, loaded_datasets["mmlu-redux"], args.batch_size, "MMLU-Redux", repeat_prompt)
 
 if __name__ == "__main__":
     main()

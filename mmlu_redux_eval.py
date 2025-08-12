@@ -16,16 +16,15 @@ def process_txt(text: str):  # mirrored from hellaswag task
     text = text.replace("  ", " ")
     return text.strip()
 
-def format_and_tokenize_arc(
+def format_and_tokenize_mmlu_redux(
     example,
     idx,
     tokenizer,
     repeat_prompt,
 ):
     question = example['question']
-    options = example['choices']['text']
-    answer = example['answerKey']
-    labels = example['choices']['label']
+    options = example['choices']
+    answer = example['answer']
 
     user_message = f"Select the option that answers correctly the following question\n\n{question}\n\nOptions:\n"
     for i, option in enumerate(options):
@@ -55,13 +54,13 @@ def format_and_tokenize_arc(
     return {
         "length": length,
         "conversation": conversation,
-        "label": labels.index(answer),
+        "label": answer,
         "index": idx,
         "options": "".join([chr(65+i) for i in range(len(options))]),
         # "tokenized": input_ids,
     }
 
-def collate_fn_arc(batch, tokenizer):
+def collate_fn_mmlu_redux(batch, tokenizer):
     conversations = [item['conversation'] for item in batch]
     lengths = [item['length'] for item in batch]
     labels = [item['label'] for item in batch]
@@ -79,7 +78,7 @@ def collate_fn_arc(batch, tokenizer):
 
     return tokenized, torch.tensor(lengths), torch.tensor(labels), torch.tensor(indices), options
 
-def run_eval_arc(model, tokenizer, dataloader):
+def run_eval_mmlu_redux(model, tokenizer, dataloader):
     nan_indices = []
     count = 0
     num_correct_all = 0
@@ -146,9 +145,9 @@ def run_eval_arc(model, tokenizer, dataloader):
         nan_indices=nan_indices,
     )
 
-def evaluate_arc(model_name, model, tokenizer, dataset, batch_size, dataset_name, repeat_prompt):
+def evaluate_mmlu_redux(model_name, model, tokenizer, dataset, batch_size, dataset_name, repeat_prompt):
     tokenized_dataset = dataset.map(
-        format_and_tokenize_arc,
+        format_and_tokenize_mmlu_redux,
         with_indices=True,
         fn_kwargs={'tokenizer': tokenizer, 'repeat_prompt': repeat_prompt},
         num_proc=8,
@@ -156,14 +155,14 @@ def evaluate_arc(model_name, model, tokenizer, dataset, batch_size, dataset_name
     )
     tokenized_dataset = tokenized_dataset.sort("length", reverse=True)
 
-    collate_with_tokenizer = lambda batch: collate_fn_arc(batch, tokenizer)
+    collate_with_tokenizer = lambda batch: collate_fn_mmlu_redux(batch, tokenizer)
     data_loader = DataLoader(
         tokenized_dataset,
         batch_size=batch_size,
         collate_fn=collate_with_tokenizer,
         num_workers=2,
     )
-    r = run_eval_arc(model, tokenizer, data_loader)
+    r = run_eval_mmlu_redux(model, tokenizer, data_loader)
     print(f"\n{model_name} Results for {dataset_name}:")
     print(r)
     if r['nan_indices']:
